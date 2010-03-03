@@ -1,31 +1,30 @@
-class SokobanElement
-  attr_accessor :x, :y
+SOKOBAN_ICONS = {
+  :guy => '@'
+  :package => 'o'
+  :floor => ' ',
+  :wall => '#'
+  :storage => '.'
+  :storage_with_guy => '+'
+  :storage_with_package => '*'
+}
 
-  def initialize(x,y)
+
+class SokobanElement #movable objects on the board
+  attr_accessor :x, :y 
+
+  def initialize(x, y, type)
     @x = x
     @y = y
+    @type = type
   end
 
   def coordinates
-    [@x,@y]
-  end
-
-  def self.icon(ch)
-    @@objects_by_icon ||= {}
-    @@objects_by_icon[ch] = self
-    def self.icon
-      ch
+    @coordinates ||= [@x, @y]
   end
   
-  def self.immobile?; true; end
-
-  def self.which(icon)
-    return @@objects_by_icon[icon]
+  def icon
+    SOKOBAN_ICONS[@type]
   end
-end
-
-module MoveSokobanElement
-  def self.immobile?; false; end
 
   def move(direction)
     case direction
@@ -41,59 +40,79 @@ module MoveSokobanElement
   end
 end
 
+class SokobanCell # elements of the level's floor plan
+  attr_reader :type, :icon
 
-class SokobanWall < SokobanElement
-  icon '#'
-end
+  class WallException < Error #raised whenever you try to move onto a wall
+  end
 
-class SokobanPackage < SokobanElement
-  include MoveSokobanElement
-  icon 'o'
-end
+  def initialize(icon, contents=nil)
+    @type, @contents = case icon
+      when SOKOBAN_ICONS[:floor]: :floor, nil
+      when SOKOBAN_ICONS[:storage]: :storage, nil
+      when SOKOBAN_ICONS[:wall]: :wall, nil
+      when SOKOBAN_ICONS[:storage_with_guy]: :storage, SokobanElement.new(:guy)
+      when SOKOBAN_ICONS[:storage_with_package]: :storage, SokobanElement.new(:package)
+    end
+    @contents ||= contents
+  end
 
-class SokobanGuy < SokobanElement
-  include MoveSokobanElement
-  icon '@'
-end
+  def open?
+    if @type == :wall; return false; end
+    if @contents.nil?; return true; end
+    return false
+
+  def empty!
+    @contents = nil
+  end
+
+  def contents; @contents; end
+  def contents=(element)
+    if !element.nil? and @type == :wall
+      raise WallException
+    end
+    @contents = element
+  end
   
+  def icon
+    if @contents.nil?
+      SOKOBAN_ICONS[@type]
+    else
+      SOKOBAN_ICONS[(@type.to_s + '_with_' + @contents.type.to_s).intern]
+    end
+  end
+
+end
+
 class SokobanLevel
   def initialize(iterable) #pass in either a string or a file
-    @_level_matrix = @_level_matrix_static = {}
     @elements = []
-    iterable.each_with_index do |line, i|
-      line.split(//).each_with_index do |ch, j|
-        soko_element_class = SokobanElement.which(ch)
-        unless soko_element_class.nil?
-          soko_element = soko_element_class.new(i,j)
-          @elements << soko_element
-          if soko_element.is_a?(SokobanGuy)
-            @guy = soko_element
-          end
-        end
+    @map = iterable.map do |line|
+      line.chomp.split(//).map do |ch|
+        ch
       end
     end
+  end
+
+  def to_s
+    @map.map do |row|
+      row.join + "\n"
+    end.join
   end
 
   def look(direction, element, spaces=1)
-    coordinates = case direction
-      when :left
-        [element.x - spaces, element.y]
-      when :right
-        [element.x + spaces, element.y]
-      when :up
-        [element.x, element.y + spaces]
-      when :down
-        [element.x, element.y - spaces]
-      end
-
-    target = nil
-    @elements.each do
-      if el.coordinates == coordinates
-        target = el
-        break
-      end
+    case direction
+      when :left    : @map[element.x - spaces][element.y]
+      when :right   : @map[element.x + spaces][element.y]
+      when :up      : @map[element.x][element.y + spaces]
+      when :down    : @map[element.x][element.y - spaces]
     end
+  end
 
-    target
+
+
   end
 end
+
+level = SokobanLevel.new(File.foreach(ARGV.first))
+puts level.to_s
